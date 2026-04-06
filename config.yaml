@@ -1,0 +1,20 @@
+cookie:
+  expiry_days: 30
+  key: some_signature_key
+  name: ai_tool_hub
+credentials:
+  usernames:
+    johndoe:
+      email: example3@gmail.com
+      failed_login_attempts: 0
+      first_name: John
+      last_name: Doe
+      logged_in: true
+      password: $2b$12$kMUth39/5gKawcJIMe3uheooPYDX8HaB/CYqwfXT6RCGd99rKvzES
+      password_hint: '12345678'
+      roles: null
+    test:
+      email: test@example.com
+      first_name: Test
+      last_name: User
+      password: $2b$12$9RB/ymovSNSQYDF7YNSWs.SwBSgAKIUvkzPm6WZSR54g5xVHl1OHC
