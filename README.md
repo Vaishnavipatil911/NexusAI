@@ -120,7 +120,7 @@ Contributions are welcome! Feel free to fork the repo and submit a pull request.
 
 For any queries or collaboration:
 
-* GitHub: https://github.com/your-username
+* GitHub:https://github.com/Vaishnavipatil911
 
 ---
 
