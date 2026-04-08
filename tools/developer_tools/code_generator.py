@@ -3,35 +3,37 @@
 from __future__ import annotations
 import time
 import json
+import re
 
 import httpx
 
 from core.tool_registry import BaseTool, register_tool
 
 
-# ── 1. Code Generator ─────────────────────────────────────────────────────────
+# ── 1. Code Generator — Groq LLM + template fallback ─────────────────────────
 
 @register_tool(
     name="code",
     display_name="💻 Code Generator",
     category="developer_tools",
-    description="Generate Python code snippets from natural-language prompts",
-    keywords=["code", "generate", "function", "algorithm", "python", "snippet", "script"],
+    description="Generate code in any language using AI",
+    keywords=["code", "generate", "function", "algorithm", "python", "java",
+              "javascript", "snippet", "script", "program", "write"],
     input_type="chat",
 )
 class CodeGeneratorTool(BaseTool):
 
     _TEMPLATES = {
-        ("quick", "sort"):    ("QuickSort",
+        ("quick", "sort"):    ("QuickSort (Python)",
             "def quick_sort(arr):\n"
             "    if len(arr) <= 1:\n        return arr\n"
             "    pivot = arr[len(arr) // 2]\n"
             "    left   = [x for x in arr if x < pivot]\n"
             "    middle = [x for x in arr if x == pivot]\n"
             "    right  = [x for x in arr if x > pivot]\n"
-            "    return quick_sort(left) + middle + quick_sort(right)"),
+            "    return quick_sort(left) + middle + quick_sort(right)", "python"),
 
-        ("merge", "sort"):    ("MergeSort",
+        ("merge", "sort"):    ("MergeSort (Python)",
             "def merge_sort(arr):\n"
             "    if len(arr) <= 1:\n        return arr\n"
             "    mid   = len(arr) // 2\n"
@@ -43,9 +45,9 @@ class CodeGeneratorTool(BaseTool):
             "    while i < len(l) and j < len(r):\n"
             "        if l[i] < r[j]: result.append(l[i]); i += 1\n"
             "        else:           result.append(r[j]); j += 1\n"
-            "    return result + l[i:] + r[j:]"),
+            "    return result + l[i:] + r[j:]", "python"),
 
-        ("binary", "search"): ("Binary Search",
+        ("binary", "search"): ("Binary Search (Python)",
             "def binary_search(arr, target):\n"
             "    left, right = 0, len(arr) - 1\n"
             "    while left <= right:\n"
@@ -53,86 +55,101 @@ class CodeGeneratorTool(BaseTool):
             "        if arr[mid] == target:   return mid\n"
             "        elif arr[mid] < target:  left = mid + 1\n"
             "        else:                    right = mid - 1\n"
-            "    return -1"),
+            "    return -1", "python"),
 
-        ("linked", "list"):   ("Linked List",
-            "class Node:\n"
-            "    def __init__(self, data):\n"
-            "        self.data = data\n        self.next = None\n\n"
-            "class LinkedList:\n"
-            "    def __init__(self): self.head = None\n\n"
-            "    def append(self, data):\n"
-            "        node = Node(data)\n"
-            "        if not self.head: self.head = node; return\n"
-            "        cur = self.head\n"
-            "        while cur.next: cur = cur.next\n"
-            "        cur.next = node\n\n"
-            "    def display(self):\n"
-            "        cur, vals = self.head, []\n"
-            "        while cur: vals.append(str(cur.data)); cur = cur.next\n"
-            "        print(' -> '.join(vals))"),
-
-        ("fibonacci",):       ("Fibonacci Sequence",
+        ("fibonacci",):       ("Fibonacci (Python)",
             "def fibonacci(n):\n"
             "    if n <= 0: return []\n"
             "    if n == 1: return [0]\n"
             "    seq = [0, 1]\n"
             "    while len(seq) < n:\n"
             "        seq.append(seq[-1] + seq[-2])\n"
-            "    return seq"),
+            "    return seq", "python"),
 
-        ("factorial",):       ("Factorial",
+        ("factorial",):       ("Factorial (Python)",
             "def factorial(n):\n"
             "    if n < 0:  raise ValueError('Negative input')\n"
             "    if n == 0: return 1\n"
-            "    return n * factorial(n - 1)"),
+            "    return n * factorial(n - 1)", "python"),
 
-        ("palindrome",):      ("Palindrome Check",
+        ("palindrome",):      ("Palindrome Check (Python)",
             "def is_palindrome(s):\n"
             "    s = ''.join(c.lower() for c in s if c.isalnum())\n"
-            "    return s == s[::-1]"),
-
-        ("stack",):           ("Stack",
-            "class Stack:\n"
-            "    def __init__(self):    self._data = []\n"
-            "    def push(self, item):  self._data.append(item)\n"
-            "    def pop(self):         return self._data.pop() if self._data else None\n"
-            "    def peek(self):        return self._data[-1] if self._data else None\n"
-            "    def is_empty(self):    return not self._data\n"
-            "    def size(self):        return len(self._data)"),
-
-        ("api", "request"):   ("API Request",
-            "import requests\n\n"
-            "def fetch_data(url, params=None, headers=None):\n"
-            "    try:\n"
-            "        r = requests.get(url, params=params, headers=headers, timeout=10)\n"
-            "        r.raise_for_status()\n"
-            "        return r.json()\n"
-            "    except requests.exceptions.RequestException as e:\n"
-            "        return {'error': str(e)}"),
-
-        ("calculator",):      ("Calculator",
-            "def calculator(a, b, op):\n"
-            "    ops = {'+': a+b, '-': a-b, '*': a*b,\n"
-            "           '/': a/b if b else 'Div/0'}\n"
-            "    return ops.get(op, 'Unknown operator')"),
+            "    return s == s[::-1]", "python"),
     }
 
     def run(self, prompt: str = "", **kwargs) -> dict:
+        # Try Groq LLM first — handles ANY language
+        try:
+            from services.llm_service import get_llm
+            llm = get_llm()
+
+            # Detect language from prompt
+            lang = self._detect_language(prompt)
+
+            response = llm.complete(
+                prompt=f"Write code for the following request:\n\n{prompt}",
+                system=(
+                    f"You are an expert {lang} developer. "
+                    f"Write clean, working, well-commented {lang} code. "
+                    f"Return ONLY the code block with no extra explanation before or after it. "
+                    f"Use markdown code fences with the language specified, like ```{lang.lower()}."
+                ),
+                max_tokens=1024,
+            )
+
+            if response and not response.startswith("❌") and not response.startswith("⚠️"):
+                # Clean up response — ensure it has code fences
+                if "```" not in response:
+                    lang_lower = lang.lower()
+                    response = f"```{lang_lower}\n{response}\n```"
+                return {
+                    "success": True,
+                    "result": f"💻 **{lang} Code**\n\n{response}\n\n*Powered by AI*",
+                    "language": lang,
+                }
+        except Exception:
+            pass  # Fall through to templates
+
+        # Fallback: Python template matching
+        return self._template_match(prompt)
+
+    def _detect_language(self, prompt: str) -> str:
+        """Detect programming language from the prompt."""
         p = prompt.lower()
-        name, code = "Custom Function", (
-            f"def solution():\n"
-            f"    '''{prompt}'''\n"
-            f"    # TODO: implement\n"
-            f"    pass"
-        )
-        for keys, (tname, tcode) in self._TEMPLATES.items():
+        langs = {
+            "java":       ["java", "class ", "public static", "system.out"],
+            "javascript": ["javascript", "js", "node", "nodejs", "react", "typescript", "ts"],
+            "c++":        ["c++", "cpp", "#include", "cout", "cin"],
+            "c":          [" c ", "c language", "printf", "scanf", "#include <stdio"],
+            "rust":       ["rust", "fn main", "cargo"],
+            "go":         ["golang", "go lang", " go ", "fmt.println"],
+            "sql":        ["sql", "select ", "insert ", "create table"],
+            "html":       ["html", "webpage", "web page", "<div", "css"],
+            "bash":       ["bash", "shell script", "#!/bin/bash"],
+            "r":          [" r ", "r language", "ggplot", "data.frame"],
+        }
+        for lang, keywords in langs.items():
+            if any(kw in p for kw in keywords):
+                return lang.title() if lang not in ("sql", "html", "r") else lang.upper()
+        return "Python"  # default
+
+    def _template_match(self, prompt: str) -> dict:
+        p = prompt.lower()
+        name, code, lang = "Custom Function", (
+            f"def solution():\n    '''{prompt}'''\n    # TODO: implement\n    pass"
+        ), "python"
+        for keys, (tname, tcode, tlang) in self._TEMPLATES.items():
             if all(k in p for k in keys):
-                name, code = tname, tcode
+                name, code, lang = tname, tcode, tlang
                 break
         return {
             "success": True,
-            "result": f"💻 **{name}**\n\n```python\n{code}\n```\n\n✅ Ready to use!",
+            "result": (
+                f"💻 **{name}**\n\n```{lang}\n{code}\n```\n\n"
+                f"✅ Ready to use!\n\n"
+                f"💡 *Add GROQ_API_KEY to .env for AI-powered code generation in any language*"
+            ),
             "code": code,
         }
 
