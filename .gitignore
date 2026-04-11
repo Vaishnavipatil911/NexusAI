@@ -5,5 +5,4 @@ __pycache__/
 *.pyc
 instance/
 *.db
-config.yaml
-
+ config.yaml
