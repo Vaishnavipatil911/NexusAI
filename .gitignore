@@ -5,4 +5,8 @@ __pycache__/
 *.pyc
 instance/
 *.db
+<<<<<<< HEAD
 config.yaml
+=======
+
+>>>>>>> 4b9041b (chore: update gitignore — exclude config.yaml and secrets)
