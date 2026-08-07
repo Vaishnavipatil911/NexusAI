@@ -1,5 +1,6 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
+
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
@@ -15,7 +16,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Custom CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .tool-badge {
@@ -34,7 +34,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Load config & auth ───────────────────────────────────────────────────────
 with open("config.yaml") as file:
     config = yaml.load(file, Loader=SafeLoader)
 
@@ -45,30 +44,25 @@ authenticator = stauth.Authenticate(
     config["cookie"]["expiry_days"],
 )
 
-# ── Signup & Login Logic ─────────────────────────────────────────────────────
-# We check if a user is NOT logged in to show the Signup option
 if not st.session_state.get("authentication_status"):
     with st.sidebar:
         tab1, tab2 = st.tabs(["Login", "Create Account"])
-        
+
         with tab1:
             try:
                 authenticator.login(location="main")
             except Exception as e:
                 st.error(f"Auth setup error: {e}")
-        
+
         with tab2:
             try:
-                # This creates the UI and updates the 'config' dictionary
                 if authenticator.register_user(location='main'):
                     st.success('User registered successfully! You can now login.')
-                    # IMPORTANT: Save the new user to your YAML file
                     with open('config.yaml', 'w') as file:
                         yaml.dump(config, file, default_flow_style=False)
             except Exception as e:
                 st.error(e)
 
-# Stop the script here if they aren't logged in yet
 if st.session_state.get("authentication_status") is not True:
     if st.session_state.get("authentication_status") is False:
         st.error("❌ Incorrect username or password.")
@@ -77,70 +71,70 @@ if st.session_state.get("authentication_status") is not True:
         st.warning("⚠️ Please log in or create an account in the sidebar to continue.")
     st.stop()
 
-# ── Authenticated App Starts Here ────────────────────────────────────────────
-
 MCP_SERVER_URL = "http://127.0.0.1:8000"
 
-# ── Tool definitions ─────────────────────────────────────────────────────────
 TOOLS = {
-    "🌤️ Weather":          {"key": "weather",    "desc": "Real-time weather for any city"},
-    "💻 Code Generator":   {"key": "code",       "desc": "Generate Python code snippets"},
-    "🧮 Math Solver":      {"key": "math",       "desc": "Evaluate math expressions"},
-    "🔐 Hash Generator":   {"key": "hash",       "desc": "Generate cryptographic hashes"},
-    "✏️ Grammar Fixer":    {"key": "grammar",    "desc": "Fix grammar & punctuation"},
-    "📄 Doc Summarizer":   {"key": "summarizer", "desc": "Summarize long text to key points"},
-    "📊 CSV Analyzer":     {"key": "csv",        "desc": "Analyze CSV files & show stats"},
-    "🔒 Password Checker": {"key": "password",   "desc": "Check password strength"},
-    "🌐 API Tester":       {"key": "api",        "desc": "Test REST API endpoints"},
-    "📝 Resume Bullets":   {"key": "resume",     "desc": "Generate resume bullet points"},
+    "🌤️ Weather": {"key": "weather", "desc": "Real-time weather for any city"},
+    "💻 Code Generator": {"key": "code", "desc": "Generate Python code snippets"},
+    "🧮 Math Solver": {"key": "math", "desc": "Evaluate math expressions"},
+    "🔐 Hash Generator": {"key": "hash", "desc": "Generate cryptographic hashes"},
+    "✏️ Grammar Fixer": {"key": "grammar", "desc": "Fix grammar & punctuation"},
+    "📄 Doc Summarizer": {"key": "summarizer", "desc": "Summarize long text to key points"},
+    "📊 CSV Analyzer": {"key": "csv", "desc": "Analyze CSV files & show stats"},
+    "🔒 Password Checker": {"key": "password", "desc": "Check password strength"},
+    "🌐 API Tester": {"key": "api", "desc": "Test REST API endpoints"},
+    "📝 Resume Bullets": {"key": "resume", "desc": "Generate resume bullet points"},
 }
 
 TOOL_HINTS = {
-    "weather":    "💡 Try: *What's the weather in Tokyo?* or just type a city name.",
-    "code":       "💡 Try: *Generate quicksort in Python* or *write a linked list class*.",
-    "math":       "💡 Try: `sqrt(144)`, `2**10`, `sin(pi/2)`, or `25 * 48`.",
-    "hash":       "💡 Enter text below. Choose your algorithm and click Generate Hash.",
-    "grammar":    "💡 Paste any text and it will be corrected automatically.",
+    "weather": "💡 Try: *What's the weather in Tokyo?* or just type a city name.",
+    "code": "💡 Try: *Generate quicksort in Python* or *write a linked list class*.",
+    "math": "💡 Try: `sqrt(144)`, `2**10`, `sin(pi/2)`, or `25 * 48`.",
+    "hash": "💡 Enter text below. Choose your algorithm and click Generate Hash.",
+    "grammar": "💡 Paste any text and it will be corrected automatically.",
     "summarizer": "💡 Paste a long article or document. Key points will be extracted.",
-    "csv":        "💡 Upload a CSV file to get statistics and column analysis.",
-    "password":   "💡 Enter a password below to check its strength.",
-    "api":        "💡 Enter a URL, choose a method, and optionally add headers/body.",
-    "resume":     "💡 Describe your project or role and get 5 professional bullet points.",
+    "csv": "💡 Upload a CSV file to get statistics and column analysis.",
+    "password": "💡 Enter a password below to check its strength.",
+    "api": "💡 Enter a URL, choose a method, and optionally add headers/body.",
+    "resume": "💡 Describe your project or role and get 5 professional bullet points.",
 }
 
-
-# ── Helper function — defined BEFORE the auth block that calls it ─────────────
 def _call_tool(tool_key: str, prompt: str) -> str:
     """Route a chat prompt to the correct MCP endpoint."""
-    if tool_key == "weather":
-        city_match = re.search(r'(?:in|for|at)\s+([A-Za-z\s]+?)(?:\?|!|\.|$)', prompt, re.IGNORECASE)
-        city = city_match.group(1).strip() if city_match else prompt.strip()
-        resp = httpx.post(f"{MCP_SERVER_URL}/tools/get_weather", json={"city": city}, timeout=10)
-        return resp.json().get("result", "Error")
-    elif tool_key == "code":
-        resp = httpx.post(f"{MCP_SERVER_URL}/tools/code_gen", json={"prompt": prompt}, timeout=10)
-        return resp.json().get("result", "Error")
-    elif tool_key == "math":
-        expr = re.sub(r'(what is|calculate|solve|compute|evaluate|=\?)', '', prompt, flags=re.IGNORECASE).strip()
-        resp = httpx.post(f"{MCP_SERVER_URL}/tools/math_solver", json={"expression": expr}, timeout=10)
-        return resp.json().get("result", "Error")
-    elif tool_key == "grammar":
-        resp = httpx.post(f"{MCP_SERVER_URL}/tools/grammar_fix", json={"text": prompt}, timeout=10)
-        return resp.json().get("result", "Error")
-    elif tool_key == "summarizer":
-        resp = httpx.post(f"{MCP_SERVER_URL}/tools/summarizer", json={"text": prompt}, timeout=15)
-        return resp.json().get("result", "Error")
-    elif tool_key == "resume":
-        resp = httpx.post(f"{MCP_SERVER_URL}/tools/resume_bullets", json={"description": prompt}, timeout=10)
-        return resp.json().get("result", "Error")
-    else:
-        return f"ℹ️ Use the dedicated input panel above for the **{tool_key}** tool."
+    try:
+        if tool_key == "weather":
+            city_match = re.search(r'(?:in|for|at)\s+([A-Za-z\s]+?)(?:\?|!|\.|$)', prompt, re.IGNORECASE)
+            city = city_match.group(1).strip() if city_match else prompt.strip()
+            resp = httpx.post(f"{MCP_SERVER_URL}/tools/get_weather", json={"city": city}, timeout=10)
+            return resp.json().get("result", "Error")
 
+        elif tool_key == "code":
+            resp = httpx.post(f"{MCP_SERVER_URL}/tools/code_gen", json={"prompt": prompt}, timeout=30)
+            return resp.json().get("result", "Error")
 
-# ── Authenticated UI ─────────────────────────────────────────────────────────
+        elif tool_key == "math":
+            expr = re.sub(r'(what is|calculate|solve|compute|evaluate|=\?)', '', prompt, flags=re.IGNORECASE).strip()
+            resp = httpx.post(f"{MCP_SERVER_URL}/tools/math_solver", json={"expression": expr}, timeout=10)
+            return resp.json().get("result", "Error")
+
+        elif tool_key == "grammar":
+            resp = httpx.post(f"{MCP_SERVER_URL}/tools/grammar_fix", json={"text": prompt}, timeout=10)
+            return resp.json().get("result", "Error")
+
+        elif tool_key == "summarizer":
+            resp = httpx.post(f"{MCP_SERVER_URL}/tools/summarizer", json={"text": prompt}, timeout=15)
+            return resp.json().get("result", "Error")
+
+        elif tool_key == "resume":
+            resp = httpx.post(f"{MCP_SERVER_URL}/tools/resume_bullets", json={"description": prompt}, timeout=10)
+            return resp.json().get("result", "Error")
+
+        else:
+            return f"ℹ️ Use the dedicated input panel above for the **{tool_key}** tool."
+    except Exception as e:
+        return f"❌ Tool call failed: {str(e)}"
+
 if st.session_state.get("authentication_status"):
-
-    # Sidebar
     with st.sidebar:
         st.markdown(f"### 👋 {st.session_state['name']}")
         if st.button("Logout", use_container_width=True):
@@ -149,24 +143,19 @@ if st.session_state.get("authentication_status"):
 
         st.divider()
         st.markdown("### 🧰 Select Tool")
-        selected_label = st.selectbox(
-            "Tool",
-            list(TOOLS.keys()),
-            label_visibility="collapsed",
-        )
+        selected_label = st.selectbox("Tool", list(TOOLS.keys()), label_visibility="collapsed")
         tool_key = TOOLS[selected_label]["key"]
         tool_desc = TOOLS[selected_label]["desc"]
 
         st.caption(tool_desc)
         st.divider()
 
-        # Extra config per tool
         if tool_key == "hash":
             hash_algo = st.selectbox("Algorithm", ["SHA256", "SHA512", "MD5", "SHA1", "SHA224", "SHA384"])
         if tool_key == "api":
-            api_method  = st.selectbox("HTTP Method", ["GET", "POST", "PUT", "PATCH", "DELETE"])
+            api_method = st.selectbox("HTTP Method", ["GET", "POST", "PUT", "PATCH", "DELETE"])
             api_headers = st.text_area("Headers (JSON)", height=80, placeholder='{"Authorization": "Bearer token"}')
-            api_body    = st.text_area("Request Body", height=80, placeholder='{"key": "value"}')
+            api_body = st.text_area("Request Body", height=80, placeholder='{"key": "value"}')
 
         st.divider()
         if st.button("📋 View Query Log", use_container_width=True):
@@ -176,7 +165,6 @@ if st.session_state.get("authentication_status"):
             st.session_state.messages = []
             st.rerun()
 
-    # ── Main area ─────────────────────────────────────────────────────────────
     col_title, col_status = st.columns([4, 1])
     with col_title:
         st.title("🛠️ AI Tool Hub")
@@ -188,7 +176,6 @@ if st.session_state.get("authentication_status"):
         except Exception:
             st.error("MCP Offline ❌")
 
-    # ── Query log panel ───────────────────────────────────────────────────────
     if st.session_state.get("show_log", False):
         with st.expander("📋 Recent Query Log", expanded=True):
             try:
@@ -204,7 +191,6 @@ if st.session_state.get("authentication_status"):
     st.divider()
     st.info(TOOL_HINTS.get(tool_key, "Ask anything!"))
 
-    # ── Structured input panels ───────────────────────────────────────────────
     if tool_key == "hash":
         hash_input = st.text_area("Text to hash", height=100, placeholder="Enter any text…")
         if st.button("🔐 Generate Hash", type="primary"):
@@ -244,8 +230,7 @@ if st.session_state.get("authentication_status"):
                 with st.spinner(f"Sending {api_method}…"):
                     resp = httpx.post(
                         f"{MCP_SERVER_URL}/tools/api_tester",
-                        json={"url": api_url, "method": api_method,
-                              "headers": headers_dict, "body": api_body or ""},
+                        json={"url": api_url, "method": api_method, "headers": headers_dict, "body": api_body or ""},
                         timeout=20,
                     )
                 st.markdown(resp.json().get("result", "Error"))
@@ -274,7 +259,6 @@ if st.session_state.get("authentication_status"):
                     st.bar_chart(df_preview[chart_col].dropna())
 
     else:
-        # ── Chat interface ────────────────────────────────────────────────────
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
